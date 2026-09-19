@@ -69,8 +69,9 @@ export function generatePassword({ length, sets }) {
     throw new RangeError('At least one character set must be selected');
   }
 
-  const selected = SET_KEYS.filter((key) => sets.includes(key));
-  if (selected.length !== sets.length) {
+  const requested = new Set(sets);
+  const selected = SET_KEYS.filter((key) => requested.has(key));
+  if (selected.length !== requested.size) {
     throw new RangeError('Unknown character set requested');
   }
 

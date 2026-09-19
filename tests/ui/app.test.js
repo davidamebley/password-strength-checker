@@ -274,3 +274,142 @@ describe('privacy and tips', () => {
     expect($('tips-popover').hidden).toBe(false);
   });
 });
+
+describe('edge cases', () => {
+  it('survives rapid typing and deleting back to empty', () => {
+    for (const value of ['v', 've', 'vel', 'velv', 'velve', 'velvet', 'velvet ', 'velvet o']) {
+      type(value);
+    }
+    expect($('category').textContent).not.toBe('Not rated');
+
+    for (const value of ['velvet', 'vel', 'v', '']) {
+      type(value);
+    }
+    expect($('category').textContent).toBe('Not rated');
+    expect($('score').hidden).toBe(true);
+    expect($('meter').getAttribute('aria-valuenow')).toBe('0');
+    expect($('mirror-output').value).toBe('');
+  });
+
+  it('handles a pasted thousand-character password', () => {
+    const long = 'velvet orbit maple tundra '.repeat(40).slice(0, 1000);
+    type(long);
+
+    expect($('mirror-output').value).toHaveLength(1000);
+    expect(Number($('meter').getAttribute('aria-valuenow'))).toBeGreaterThan(0);
+  });
+
+  it('caps what can be typed into the password field', () => {
+    expect(Number($('password').getAttribute('maxlength'))).toBeGreaterThanOrEqual(1000);
+  });
+
+  it('keeps the two visibility controls stable when toggled repeatedly', () => {
+    type('hunter apple');
+
+    for (let i = 0; i < 5; i += 1) {
+      $('reveal-button').click();
+      setChecked('mirror-toggle', false);
+      $('reveal-button').click();
+      setChecked('mirror-toggle', true);
+    }
+
+    expect($('password').type).toBe('password');
+    expect($('password').value).toBe('hunter apple');
+    expect($('reveal-button').getAttribute('aria-label')).toBe('Show password');
+    expect($('icon-eye').hasAttribute('hidden')).toBe(false);
+    expect($('mirror-output').hidden).toBe(false);
+    expect($('mirror-output').value).toBe('hunter apple');
+  });
+
+  it('uses the generated password while the mirror is hidden without revealing it', () => {
+    setChecked('mirror-toggle', false);
+    $('use-button').click();
+
+    expect($('password').value).toBe($('generated').value);
+    expect($('mirror-output').hidden).toBe(true);
+    expect($('mirror-output').value).toBe('');
+    expect($('category').textContent).not.toBe('Not rated');
+  });
+
+  it('keeps generator settings when the length changes after a generation', () => {
+    setChecked('set-symbols', false);
+    const sets = [...document.querySelectorAll('[data-set]')].map((input) => input.checked);
+
+    $('length').value = '32';
+    $('length').dispatchEvent(new window.Event('input', { bubbles: true }));
+    $('length').dispatchEvent(new window.Event('change', { bubbles: true }));
+
+    expect($('generated').value).toHaveLength(32);
+    expect($('length-value').textContent).toBe('32');
+    expect([...document.querySelectorAll('[data-set]')].map((input) => input.checked)).toEqual(
+      sets,
+    );
+  });
+
+  it('reports a copy failure instead of claiming success', async () => {
+    Object.defineProperty(window.navigator, 'clipboard', {
+      value: {
+        writeText: vi.fn().mockRejectedValue(new Error('denied')),
+      },
+      configurable: true,
+    });
+
+    $('copy-button').click();
+
+    await vi.waitFor(() =>
+      expect($('generator-status').textContent).toBe(
+        'Copy is unavailable. Select the password and copy it.',
+      ),
+    );
+  });
+
+  it('asks for a password before copying when there is nothing to copy', () => {
+    $('generated').value = '';
+    $('copy-button').click();
+    expect($('generator-status').textContent).toBe('Generate a password first.');
+  });
+
+  it('opens and closes the privacy dialog repeatedly, restoring focus each time', () => {
+    for (let i = 0; i < 3; i += 1) {
+      $('privacy-button').focus();
+      $('privacy-button').click();
+      expect($('privacy-overlay').hidden).toBe(false);
+      expect(document.activeElement).toBe($('privacy-close'));
+
+      pressEscape();
+      expect($('privacy-overlay').hidden).toBe(true);
+      expect(document.activeElement).toBe($('privacy-button'));
+    }
+  });
+
+  it('keeps focus on the tips trigger when Escape dismisses the tips', () => {
+    $('tips-button').focus();
+    expect($('tips-popover').hidden).toBe(false);
+
+    pressEscape();
+
+    expect($('tips-popover').hidden).toBe(true);
+    expect($('tips-button').getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe($('tips-button'));
+  });
+});
+
+describe('strength announcements', () => {
+  it('announces the settled result rather than every keystroke', async () => {
+    vi.useFakeTimers();
+    try {
+      for (const value of ['v', 've', 'vel', 'velvet orbit maple tundra']) {
+        type(value);
+      }
+      expect($('result-summary').textContent).toBe('');
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect($('result-summary').textContent).toMatch(/^Strong, \d+ out of 100$/);
+
+      type('');
+      expect($('result-summary').textContent).toBe('');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

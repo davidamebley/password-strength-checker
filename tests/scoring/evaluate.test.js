@@ -298,3 +298,106 @@ describe('privacy', () => {
     }
   });
 });
+
+describe('edge cases', () => {
+  it('handles whitespace-only input without crashing and rates it Very Weak', () => {
+    for (const password of [' ', '   ', '        ', '\t\n\r']) {
+      expect(evaluatePassword(password).category, JSON.stringify(password)).toBe('Very Weak');
+    }
+  });
+
+  it('ignores surrounding whitespace, which an attacker would strip anyway', () => {
+    for (const password of ['password', 'Password1!', 'Coffee2026', PASSPHRASE_SPACES]) {
+      for (const padded of [` ${password}`, `${password} `, `  ${password}  `, `\t${password}\n`]) {
+        expect(evaluatePassword(padded), padded).toEqual(evaluatePassword(password));
+      }
+    }
+  });
+
+  it('still flags a common password hidden behind padding', () => {
+    expect(findingTypes(' password ')).toContain('common-password');
+  });
+
+  it('treats underscores, dots, and commas as separators, like spaces and hyphens', () => {
+    for (const separator of ['_', '.', ',', '+', '/']) {
+      const password = PASSPHRASE_SPACES.replaceAll(' ', separator);
+      expect(Math.abs(score(password) - score(PASSPHRASE_SPACES)), password).toBeLessThanOrEqual(
+        10,
+      );
+    }
+  });
+
+  it('rates Unicode letters and emoji without treating them as free strength', () => {
+    expect(score('crème brûlée soleil')).toBeGreaterThanOrEqual(40);
+    expect(evaluatePassword('🙂🙂🙂🙂').category).toBe('Very Weak');
+    expect(findingTypes('ααααααα')).toEqual(
+      expect.arrayContaining(['repeated-characters', 'low-uniqueness']),
+    );
+    expect(evaluatePassword('🙂🦀🌍🚀🎉🍕🐙🌵').category).not.toBe('Very Weak');
+  });
+
+  it('counts a grapheme cluster as one character rather than several', () => {
+    expect(findingTypes('ééé')).toContain('repeated-characters');
+  });
+
+  it('rates very long passwords sensibly and quickly', () => {
+    // Deterministic pseudo-random text, so the expectations cannot flake.
+    let seed = 12345;
+    const varied = Array.from({ length: 1000 }, () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return String.fromCharCode(33 + (seed % 94));
+    }).join('');
+    const repetitive = 'ab'.repeat(500);
+
+    const start = performance.now();
+    expect(evaluatePassword(varied).category).toBe('Very Strong');
+    expect(evaluatePassword(repetitive).category).toBe('Very Weak');
+    // A thousand characters is evaluated on every keystroke, so it has to stay fast.
+    expect(performance.now() - start).toBeLessThan(200);
+  });
+});
+
+describe('repeated phrase separators', () => {
+  const PHRASE_WITH_SHORT_WORD = 'my dog has fleas';
+
+  it('does not let repeated spaces raise the score', () => {
+    for (const spaces of ['  ', '   ', '    ']) {
+      const padded = PHRASE_WITH_SHORT_WORD.replaceAll(' ', spaces);
+      expect(score(padded), padded).toBe(score(PHRASE_WITH_SHORT_WORD));
+    }
+  });
+
+  it('treats a run of any recognized separator as a single separator', () => {
+    for (const separator of ['-', '_', '.', ',', '+', '/']) {
+      const single = PHRASE_WITH_SHORT_WORD.replaceAll(' ', separator);
+      const repeated = PHRASE_WITH_SHORT_WORD.replaceAll(' ', separator.repeat(3));
+      expect(score(repeated), repeated).toBe(score(single));
+      expect(score(single), single).toBe(score(PHRASE_WITH_SHORT_WORD));
+    }
+  });
+
+  it('leaves ordinary phrases where they were', () => {
+    for (const password of [PASSPHRASE_SPACES, PASSPHRASE_HYPHENS, PASSPHRASE_SEPARATED]) {
+      expect(score(password), password).toBeGreaterThanOrEqual(60);
+      expect(score(password), password).toBeLessThan(80);
+      expect(score(password.replaceAll(/[\s-]/g, '  ')), password).toBe(score(password));
+    }
+    expect(evaluatePassword(PASSPHRASE_LONG).category).toBe('Very Strong');
+  });
+
+  it('does not treat a random password with words appended as a phrase', () => {
+    for (const password of [
+      `${RANDOM_MIXED_16} velvet orbit`,
+      `velvet orbit ${RANDOM_MIXED_16}`,
+      `${RANDOM_MIXED_16}  velvet  orbit`,
+    ]) {
+      expect(evaluatePassword(password).category, password).toBe('Very Strong');
+    }
+  });
+
+  it('still does not treat # as a separator', () => {
+    // Were it one, Tiger and Lamp would read as a two-word phrase and cap the score at Fair.
+    expect(score('Tiger#Lamp2019')).toBeGreaterThanOrEqual(60);
+    expect(score('Tiger#Lamp2019')).toBeLessThan(80);
+  });
+});

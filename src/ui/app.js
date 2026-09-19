@@ -14,6 +14,9 @@ const CATEGORY_SLUGS = {
 };
 
 const STATUS_DURATION = 2500;
+// Typing changes the score on every keystroke. Announcing each one would drown a screen
+// reader, so only the value the user settles on is sent to the live region.
+const ANNOUNCE_DELAY = 700;
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 // `hidden` is an HTMLElement property, so inline SVG icons need the attribute itself.
@@ -76,6 +79,18 @@ export function initApp(doc = document) {
 
   // Strength result
 
+  let announceTimer;
+  function announce(message) {
+    clearTimeout(announceTimer);
+    if (message === '') {
+      resultSummary.textContent = '';
+      return;
+    }
+    announceTimer = setTimeout(() => {
+      resultSummary.textContent = message;
+    }, ANNOUNCE_DELAY);
+  }
+
   function render(password) {
     const { score, category, findings: found, suggestions: advice } = evaluatePassword(password);
     const empty = password === '';
@@ -93,7 +108,7 @@ export function initApp(doc = document) {
     categoryOutput.textContent = empty ? 'Not rated' : category;
     setHidden(scoreOutput, empty);
     scoreOutput.textContent = empty ? '' : `${score} / 100`;
-    resultSummary.textContent = empty ? '' : `${category}, ${score} out of 100`;
+    announce(empty ? '' : `${category}, ${score} out of 100`);
     setHidden(emptyHint, !empty);
 
     renderList(suggestions, empty ? [] : advice);
@@ -231,39 +246,46 @@ export function initApp(doc = document) {
   let tipsPinned = false;
   let tipsHovered = false;
   let tipsFocused = false;
+  // Set when the tips are dismissed while the pointer or focus is still on the trigger,
+  // so Escape can close them without taking focus away from the button.
+  let tipsDismissed = false;
 
   function syncTips() {
-    const open = tipsPinned || tipsHovered || tipsFocused;
+    const open = !tipsDismissed && (tipsPinned || tipsHovered || tipsFocused);
     setHidden(tipsPopover, !open);
     tipsButton.setAttribute('aria-expanded', String(open));
   }
 
   tipsButton.addEventListener('click', () => {
+    // Dismissing already unpins, so a click after Escape opens the tips again.
     tipsPinned = !tipsPinned;
+    tipsDismissed = false;
     syncTips();
   });
   tipsButton.addEventListener('mouseenter', () => {
     tipsHovered = true;
+    tipsDismissed = false;
     syncTips();
   });
   tipsButton.addEventListener('mouseleave', () => {
     tipsHovered = false;
+    tipsDismissed = false;
     syncTips();
   });
   tipsButton.addEventListener('focus', () => {
     tipsFocused = true;
+    tipsDismissed = false;
     syncTips();
   });
   tipsButton.addEventListener('blur', () => {
     tipsFocused = false;
+    tipsDismissed = false;
     syncTips();
   });
 
   function closeTips() {
     tipsPinned = false;
-    tipsHovered = false;
-    tipsFocused = false;
-    tipsButton.blur();
+    tipsDismissed = true;
     syncTips();
   }
 
@@ -329,6 +351,4 @@ export function initApp(doc = document) {
   syncTips();
   update();
   generate();
-
-  return { render, generate, theme };
 }

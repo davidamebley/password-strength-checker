@@ -67,7 +67,9 @@ const PHRASE = {
   minWordLength: 3,
   minLetterShare: 0.7, // the words must make up most of the password
 };
-const WORD_SEPARATORS = /[\s-]+/;
+// Attackers try the same word list with any of these between the words. A run of them counts
+// as one separator, so padding a phrase with extra separators cannot change what it is.
+const WORD_SEPARATORS = /[\s\-_.,+/]+/g;
 const WORD_PATTERN = /^[\p{L}'’]+$/u;
 
 const VERY_SHORT_LENGTH = 6;
@@ -130,18 +132,23 @@ function bitsPerCharacter(chars) {
 
 /**
  * Counts the words of a phrase-shaped password, or returns 0 when it is not phrase shaped.
- * Words are alphabetic tokens separated by spaces or hyphens, and they must make up most
- * of the password so that a random password with a word appended is not treated as a phrase.
+ * Words are alphabetic tokens between separators, and they must make up most of the password
+ * so that a random password with a word appended is not treated as a phrase.
+ *
+ * The share is measured against the password with each separator run collapsed to one
+ * character, and every alphabetic token counts toward it, so neither repeated separators nor
+ * short words such as "my" can push a phrase out of the phrase model and back onto the
+ * character model, where the extra characters would read as extra strength.
  */
-function countPhraseWords(password, length) {
-  const words = password
-    .split(WORD_SEPARATORS)
-    .filter((token) => WORD_PATTERN.test(token) && token.length >= PHRASE.minWordLength);
+function countPhraseWords(password) {
+  const tokens = password.split(WORD_SEPARATORS).filter((token) => WORD_PATTERN.test(token));
+  const words = tokens.filter((token) => token.length >= PHRASE.minWordLength);
   if (words.length < PHRASE.minWords) {
     return 0;
   }
-  const letters = words.reduce((total, word) => total + word.length, 0);
-  return letters / length >= PHRASE.minLetterShare ? words.length : 0;
+  const letters = tokens.reduce((total, token) => total + token.length, 0);
+  const collapsed = password.replace(WORD_SEPARATORS, ' ').length;
+  return letters / collapsed >= PHRASE.minLetterShare ? words.length : 0;
 }
 
 function isLowUniqueness(chars, password) {
@@ -228,7 +235,7 @@ function analyze(password) {
   return {
     bits,
     length: chars.length,
-    words: countPhraseWords(password, chars.length),
+    words: countPhraseWords(password),
     coverage,
     common,
     suffix,
@@ -313,7 +320,10 @@ export function evaluatePassword(password) {
     return { score: 0, category: getCategory(0), findings: [], suggestions: [] };
   }
 
-  const analysis = analyze(password);
+  // Surrounding whitespace is invisible and trivially stripped, so it adds no guessing work.
+  // Without this, " password " would escape the common-password check entirely.
+  const trimmed = password.trim();
+  const analysis = analyze(trimmed === '' ? password : trimmed);
   const score = scoreFrom(analysis);
   const types = findingTypesFrom(analysis);
 
