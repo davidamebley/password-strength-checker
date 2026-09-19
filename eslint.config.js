@@ -14,8 +14,30 @@ export default [
     languageOptions: { globals: globals.node },
   },
   {
+    // The scoring engine must stay pure: no network, storage, or DOM access.
+    files: ['src/scoring/**/*.js'],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        'fetch',
+        'XMLHttpRequest',
+        'WebSocket',
+        'EventSource',
+        'navigator',
+        'localStorage',
+        'sessionStorage',
+        'indexedDB',
+        'document',
+        'window',
+        'location',
+        'history',
+      ],
+    },
+  },
+  {
     rules: {
       'no-console': 'error',
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       eqeqeq: ['error', 'always'],
       'prefer-const': 'error',
     },
