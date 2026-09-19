@@ -14,6 +14,11 @@ export default [
     languageOptions: { globals: globals.node },
   },
   {
+    // UI tests run against a jsdom document.
+    files: ['tests/ui/**/*.js'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+  },
+  {
     // The scoring engine must stay pure: no network, storage, or DOM access.
     files: ['src/scoring/**/*.js'],
     rules: {
