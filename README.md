@@ -6,6 +6,8 @@ predictable choices such as `Password1!` are rated as weak even though they sati
 composition rules. Everything runs locally in the browser: no password is ever sent anywhere. The
 app also includes a configurable generator that produces passwords from the Web Crypto API.
 
+[Open the live Password Strength Checker](https://davidamebley.github.io/password-strength-checker/)
+
 ## Features
 
 - Real-time strength score from 0 to 100
