@@ -111,4 +111,4 @@ tests/
 
 ## Live demo
 
-Pending. A GitHub Pages URL will be added here once the site is deployed.
+[Open the live Password Strength Checker](https://davidamebley.github.io/password-strength-checker/)
